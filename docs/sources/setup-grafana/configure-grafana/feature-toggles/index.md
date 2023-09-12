@@ -142,7 +142,6 @@ Experimental features might be changed or removed without prior notice.
 | `pluginsAPIMetrics`                         | Sends metrics of public grafana packages usage by plugins                                                    |
 | `httpSLOLevels`                             | Adds SLO level to http request metrics                                                                       |
 | `alertingModifiedExport`                    | Enables using UI for provisioned rules modification and export                                               |
-| `panelTitleSearchInV1`                      | Enable searching for dashboards using panel title in search v1                                               |
 
 ## Development feature toggles
 
@@ -154,3 +153,5 @@ The following toggles require explicitly setting Grafana's [app mode]({{< relref
 | `externalServiceAuth`     | Starts an OAuth2 authentication provider for external services                               |
 | `idForwarding`            | Generate signed id token for identity that can be forwarded to plugins and external services |
 | `externalServiceAccounts` | Automatic service account and token setup for plugins                                        |
+| `panelTitleSearchInV1`    | Enable searching for dashboards using panel title in search v1                               |
+
