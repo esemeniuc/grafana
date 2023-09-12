@@ -816,5 +816,11 @@ var (
 			FrontendOnly: false,
 			Owner:        grafanaAlertingSquad,
 		},
+		{
+			Name:        "panelTitleSearchInV1",
+			Description: "Enable searching for dashboards using panel title in search v1",
+			Stage:       FeatureStageExperimental,
+			Owner:       grafanaBackendPlatformSquad,
+		},
 	}
 )
