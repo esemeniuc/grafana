@@ -3,8 +3,7 @@ package definitions
 type Secret string
 
 type IntegrationBase struct {
-	UID                   string `json:"uid" yaml:"uid"`
-	DisableResolveMessage bool   `json:"disableResolveMessage" yaml:"disableResolveMessage"`
+	DisableResolveMessage *bool `json:"disableResolveMessage" yaml:"disableResolveMessage" hcl:"disable_resolve_message"`
 }
 
 type AlertmanagerIntegration struct {
