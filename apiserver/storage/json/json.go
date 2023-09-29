@@ -72,7 +72,7 @@ func NewStorage(
 	getAttrsFunc storage.AttrFunc,
 	trigger storage.IndexerFuncs,
 	indexers *cache.Indexers,
-) (*Storage, factory.DestroyFunc, error) {
+) (storage.Interface, factory.DestroyFunc, error) {
 	if err := ensureDir(resourcePrefix); err != nil {
 		return nil, func() {}, fmt.Errorf("could not establish a writable directory at path=%s", resourcePrefix)
 	}

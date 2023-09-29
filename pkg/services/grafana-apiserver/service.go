@@ -29,6 +29,7 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/klog/v2"
 
+	jsonstorage "github.com/grafana/grafana/apiserver/storage/json"
 	"github.com/grafana/grafana/pkg/api/routing"
 	"github.com/grafana/grafana/pkg/infra/appcontext"
 	"github.com/grafana/grafana/pkg/middleware"
@@ -43,6 +44,14 @@ import (
 const (
 	DefaultAPIServerIp   = "127.0.0.1"
 	DefaultAPIServerPort = 6443
+)
+
+type StorageType string
+
+const (
+	StorageTypeJson   StorageType = "json"
+	StorageTypeEtcd   StorageType = "etcd"
+	StorageTypeLegacy StorageType = "legacy"
 )
 
 var (
@@ -90,7 +99,9 @@ type RestConfigProvider interface {
 type service struct {
 	*services.BasicService
 
-	restConfig   *clientrest.Config
+	restConfig *clientrest.Config
+
+	storageType  string
 	etcd_servers []string
 
 	enabled   bool
@@ -112,6 +123,7 @@ func ProvideService(
 ) (*service, error) {
 	s := &service{
 		etcd_servers: cfg.SectionWithEnvOverrides("grafana-apiserver").Key("etcd_servers").Strings(","),
+		storageType:  cfg.SectionWithEnvOverrides("grafana-apiserver").Key("storage_type").MustString(string(StorageTypeLegacy)),
 		enabled:      cfg.IsFeatureToggleEnabled(featuremgmt.FlagGrafanaAPIServer),
 		rr:           rr,
 		dataPath:     path.Join(cfg.DataPath, "k8s"),
@@ -177,21 +189,23 @@ func (s *service) start(ctx context.Context) error {
 	o.SecureServing.ServerCert.CertDirectory = s.dataPath
 	o.Authentication.RemoteKubeConfigFileOptional = true
 	o.Authorization.RemoteKubeConfigFileOptional = true
-	o.Etcd.StorageConfig.Transport.ServerList = s.etcd_servers
-
 	o.Admission = nil
 	o.CoreAPI = nil
-	if len(o.Etcd.StorageConfig.Transport.ServerList) == 0 {
-		o.Etcd = nil
-	}
-
-	if err := o.Validate(); len(err) > 0 {
-		return err[0]
-	}
 
 	serverConfig := genericapiserver.NewRecommendedConfig(Codecs)
 	if err := o.SecureServing.ApplyTo(&serverConfig.SecureServing, &serverConfig.LoopbackClientConfig); err != nil {
 		return err
+	}
+
+	if StorageType(s.storageType) == StorageTypeEtcd {
+		o.Etcd.StorageConfig.Transport.ServerList = s.etcd_servers
+		if err := o.Etcd.ApplyTo(&serverConfig.Config); err != nil {
+			return err
+		}
+	}
+
+	if StorageType(s.storageType) == StorageTypeJson {
+		serverConfig.RESTOptionsGetter = jsonstorage.NewRESTOptionsGetter(s.dataPath, o.Etcd.StorageConfig)
 	}
 
 	authenticator, err := newAuthenticator()
