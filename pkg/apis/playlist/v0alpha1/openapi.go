@@ -5,7 +5,7 @@ import (
 	spec "k8s.io/kube-openapi/pkg/validation/spec"
 )
 
-// NOTE: this must match the golang fully qualifid name!
+// NOTE: this must match the golang fully qualified name!
 const kindKey = "github.com/grafana/grafana/pkg/apis/playlist/v0alpha1.Playlist"
 
 func getOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
@@ -42,13 +42,21 @@ func schema_pkg_Playlist(ref common.ReferenceCallback) common.OpenAPIDefinition 
 							Ref:     ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
 						},
 					},
-					// TODO!  add a real spec here
-					// "spec": {
-					// 	SchemaProps: spec.SchemaProps{
-					// 		Default: map[string]interface{}{},
-					// 		Ref:     ref("github.com/grafana/google-sheets-datasource/pkg/apis/googlesheets/v1.DatasourceSpec"),
-					// 	},
-					// },
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Type:    []string{"object"},
+							Properties: map[string]spec.Schema{
+								"name": {
+									SchemaProps: spec.SchemaProps{
+										Description: "Name of the playlist",
+										Type:        []string{"string"},
+										Format:      "",
+									},
+								},
+							},
+						},
+					},
 					// "status": {
 					// 	SchemaProps: spec.SchemaProps{
 					// 		Default: map[string]interface{}{},

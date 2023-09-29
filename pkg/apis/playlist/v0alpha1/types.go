@@ -12,6 +12,10 @@ type Playlist struct {
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	Spec PlaylistSpec `json:"spec,omitempty"`
+}
+
+type PlaylistSpec struct {
 	Name string `json:"name,omitempty"`
 }
 

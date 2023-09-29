@@ -15,7 +15,7 @@ Start Grafana:
 make run
 ```
 
-## Enable dual write to `etcd`
+## Enable dual write to `etcd`:
 
 Start `etcd`:
 ```bash
@@ -26,8 +26,18 @@ Enable dual write to `etcd`:
 
 ```ini
 [grafana-apiserver]
+storage_type = etcd
 etcd_servers = 127.0.0.1:2379
 ```
+
+## Enable dual write to JSON files:
+
+```ini
+[grafana-apiserver]
+storage_type = json
+```
+
+Files are written to `./data/k8s/` by default.
 
 ### `kubectl` access
 

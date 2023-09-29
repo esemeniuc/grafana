@@ -1,6 +1,6 @@
 module github.com/grafana/grafana/apiserver
 
-go 1.21.1
+go 1.20
 
 replace k8s.io/apiserver => k8s.io/apiserver v0.28.2
 

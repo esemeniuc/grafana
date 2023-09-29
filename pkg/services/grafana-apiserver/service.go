@@ -101,8 +101,8 @@ type service struct {
 
 	restConfig *clientrest.Config
 
-	storageType  string
-	etcd_servers []string
+	storageType string
+	etcdServers []string
 
 	enabled   bool
 	dataPath  string
@@ -122,14 +122,14 @@ func ProvideService(
 	authz authorizer.Authorizer,
 ) (*service, error) {
 	s := &service{
-		etcd_servers: cfg.SectionWithEnvOverrides("grafana-apiserver").Key("etcd_servers").Strings(","),
-		storageType:  cfg.SectionWithEnvOverrides("grafana-apiserver").Key("storage_type").MustString(string(StorageTypeLegacy)),
-		enabled:      cfg.IsFeatureToggleEnabled(featuremgmt.FlagGrafanaAPIServer),
-		rr:           rr,
-		dataPath:     path.Join(cfg.DataPath, "k8s"),
-		stopCh:       make(chan struct{}),
-		builders:     []APIGroupBuilder{},
-		authorizer:   authz,
+		etcdServers: cfg.SectionWithEnvOverrides("grafana-apiserver").Key("etcd_servers").Strings(","),
+		storageType: cfg.SectionWithEnvOverrides("grafana-apiserver").Key("storage_type").MustString(string(StorageTypeLegacy)),
+		enabled:     cfg.IsFeatureToggleEnabled(featuremgmt.FlagGrafanaAPIServer),
+		rr:          rr,
+		dataPath:    path.Join(cfg.DataPath, "k8s"),
+		stopCh:      make(chan struct{}),
+		builders:    []APIGroupBuilder{},
+		authorizer:  authz,
 	}
 
 	// This will be used when running as a dskit service
@@ -198,7 +198,7 @@ func (s *service) start(ctx context.Context) error {
 	}
 
 	if StorageType(s.storageType) == StorageTypeEtcd {
-		o.Etcd.StorageConfig.Transport.ServerList = s.etcd_servers
+		o.Etcd.StorageConfig.Transport.ServerList = s.etcdServers
 		if err := o.Etcd.ApplyTo(&serverConfig.Config); err != nil {
 			return err
 		}

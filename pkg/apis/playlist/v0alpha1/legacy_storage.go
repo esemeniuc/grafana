@@ -123,6 +123,8 @@ func (s *legacyStorage) Get(ctx context.Context, name string, options *metav1.Ge
 		ObjectMeta: metav1.ObjectMeta{
 			Name: p.Uid,
 		},
-		Name: p.Name + "//" + p.Interval,
+		Spec: PlaylistSpec{
+			Name: p.Name,
+		},
 	}, nil
 }
