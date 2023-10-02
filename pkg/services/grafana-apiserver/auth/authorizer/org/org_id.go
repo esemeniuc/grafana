@@ -6,9 +6,9 @@ import (
 
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 
+	grafanarequest "github.com/grafana/grafana/apiserver/endpoints/request"
 	"github.com/grafana/grafana/pkg/infra/appcontext"
 	"github.com/grafana/grafana/pkg/infra/log"
-	grafanarequest "github.com/grafana/grafana/pkg/services/grafana-apiserver/endpoints/request"
 	"github.com/grafana/grafana/pkg/services/org"
 )
 

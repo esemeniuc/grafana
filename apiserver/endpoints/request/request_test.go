@@ -6,7 +6,7 @@ import (
 
 	"k8s.io/apiserver/pkg/endpoints/request"
 
-	grafanarequest "github.com/grafana/grafana/pkg/services/grafana-apiserver/endpoints/request"
+	grafanarequest "github.com/grafana/grafana/apiserver/endpoints/request"
 )
 
 func TestOrgIDFrom(t *testing.T) {

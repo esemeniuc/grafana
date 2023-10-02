@@ -6,8 +6,8 @@ import (
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	grafanaregistry "github.com/grafana/grafana/pkg/services/grafana-apiserver/registry/generic"
-	grafanarest "github.com/grafana/grafana/pkg/services/grafana-apiserver/rest"
+	grafanaregistry "github.com/grafana/grafana/apiserver/registry/generic"
+	grafanarest "github.com/grafana/grafana/apiserver/rest"
 )
 
 var _ grafanarest.Storage = (*storage)(nil)

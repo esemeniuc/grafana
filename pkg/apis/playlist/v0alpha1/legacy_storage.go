@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/rest"
 
-	grafanarequest "github.com/grafana/grafana/pkg/services/grafana-apiserver/endpoints/request"
+	grafanarequest "github.com/grafana/grafana/apiserver/endpoints/request"
 	"github.com/grafana/grafana/pkg/services/playlist"
 )
 

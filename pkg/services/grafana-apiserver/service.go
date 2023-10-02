@@ -2,7 +2,7 @@ package grafanaapiserver
 
 import (
 	"context"
-	"crypto/x509"
+	"fmt"
 	"net"
 	"path"
 	"strconv"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/grafana-apiserver/pkg/certgenerator"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,17 +41,18 @@ import (
 )
 
 const (
-	DefaultAPIServerHost = "https://" + certgenerator.DefaultAPIServerIp + ":6443"
+	DefaultAPIServerIp   = "127.0.0.1"
+	DefaultAPIServerPort = 6443
 )
 
 var (
+	DefaultAPIServerHost = fmt.Sprintf("https://%s:%d", DefaultAPIServerIp, DefaultAPIServerPort)
+
 	_ Service                    = (*service)(nil)
 	_ RestConfigProvider         = (*service)(nil)
 	_ registry.BackgroundService = (*service)(nil)
 	_ registry.CanBeDisabled     = (*service)(nil)
-)
 
-var (
 	Scheme = runtime.NewScheme()
 	Codecs = serializer.NewCodecFactory(Scheme)
 
@@ -173,6 +173,8 @@ func (s *service) start(ctx context.Context) error {
 
 	o := options.NewRecommendedOptions("", unstructured.UnstructuredJSONScheme)
 	o.SecureServing.BindPort = 6443
+	o.SecureServing.BindAddress = net.ParseIP(DefaultAPIServerIp)
+	o.SecureServing.ServerCert.CertDirectory = s.dataPath
 	o.Authentication.RemoteKubeConfigFileOptional = true
 	o.Authorization.RemoteKubeConfigFileOptional = true
 	o.Etcd.StorageConfig.Transport.ServerList = s.etcd_servers
@@ -183,47 +185,22 @@ func (s *service) start(ctx context.Context) error {
 		o.Etcd = nil
 	}
 
-	// Get the util to get the paths to pre-generated certs
-	certUtil := certgenerator.CertUtil{
-		K8sDataPath: s.dataPath,
-	}
-
-	if err := certUtil.InitializeCACertPKI(); err != nil {
-		return err
-	}
-
-	if err := certUtil.EnsureApiServerPKI(certgenerator.DefaultAPIServerIp); err != nil {
-		return err
-	}
-
-	o.SecureServing.BindAddress = net.ParseIP(certgenerator.DefaultAPIServerIp)
-	o.SecureServing.ServerCert.CertKey = options.CertKey{
-		CertFile: certUtil.APIServerCertFile(),
-		KeyFile:  certUtil.APIServerKeyFile(),
-	}
-
 	if err := o.Validate(); len(err) > 0 {
 		return err[0]
 	}
 
 	serverConfig := genericapiserver.NewRecommendedConfig(Codecs)
-	err := o.ApplyTo(serverConfig)
+	if err := o.SecureServing.ApplyTo(&serverConfig.SecureServing, &serverConfig.LoopbackClientConfig); err != nil {
+		return err
+	}
+
+	authenticator, err := newAuthenticator()
 	if err != nil {
 		return err
 	}
 
-	rootCert, err := certUtil.GetK8sCACert()
-	if err != nil {
-		return err
-	}
-
-	authenticator, err := newAuthenticator(rootCert)
-	if err != nil {
-		return err
-	}
-
-	serverConfig.Authorization.Authorizer = s.authorizer
 	serverConfig.Authentication.Authenticator = authenticator
+	serverConfig.Authorization.Authorizer = s.authorizer
 
 	// Get the list of groups the server will support
 	builders := s.builders
@@ -340,7 +317,7 @@ func (s *service) writeKubeConfiguration(restConfig *clientrest.Config) error {
 	return clientcmd.WriteToFile(clientConfig, path.Join(s.dataPath, "grafana.kubeconfig"))
 }
 
-func newAuthenticator(cert *x509.Certificate) (authenticator.Request, error) {
+func newAuthenticator() (authenticator.Request, error) {
 	reqHeaderOptions := options.RequestHeaderAuthenticationOptions{
 		UsernameHeaders:     []string{"X-Remote-User"},
 		GroupHeaders:        []string{"X-Remote-Group"},
