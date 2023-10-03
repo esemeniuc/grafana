@@ -59,6 +59,7 @@ export interface CatalogPlugin extends WithAccessControlMetadata {
   details?: CatalogPluginDetails;
   error?: PluginErrorCode;
   angularDetected?: boolean;
+  statusContext?: string;
 }
 
 export interface CatalogPluginDetails {

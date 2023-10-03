@@ -95,6 +95,7 @@ export function mapRemoteToCatalog(plugin: RemotePlugin, error?: PluginError): C
     type: typeCode,
     error: error?.errorCode,
     angularDetected,
+    statusContext: plugin.statusContext || '',
   };
 }
 
@@ -196,6 +197,7 @@ export function mapToCatalogPlugin(local?: LocalPlugin, remote?: RemotePlugin, e
     // Only local plugins have access control metadata
     accessControl: local?.accessControl,
     angularDetected: local?.angularDetected || remote?.angularDetected,
+    statusContext: remote?.statusContext || '',
   };
 }
 
