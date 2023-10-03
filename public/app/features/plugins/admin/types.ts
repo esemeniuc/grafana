@@ -113,6 +113,7 @@ export type RemotePlugin = {
   signatureType: PluginSignatureType | '';
   slug: string;
   status: RemotePluginStatus;
+  statusContext?: string;
   typeCode: PluginType;
   typeId: number;
   typeName: string;
