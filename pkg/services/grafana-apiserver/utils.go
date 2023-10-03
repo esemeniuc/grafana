@@ -6,102 +6,244 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apiserver/pkg/endpoints/request"
 
 	"github.com/grafana/grafana/pkg/infra/appcontext"
 	"github.com/grafana/grafana/pkg/infra/grn"
-	"github.com/grafana/grafana/pkg/kinds"
 	"github.com/grafana/grafana/pkg/services/store/entity"
 	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/util"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apiserver/pkg/endpoints/request"
 )
 
-// Convert an etcd key to GRN style
-func keyToGRN(key string, gr *schema.GroupResource) (*grn.GRN, error) {
+type Key struct {
+	Group     string
+	Kind      string
+	Namespace string
+	Name      string
+}
+
+func ParseKey(key string) (*Key, error) {
+	// /<group>/<kind plural lowercase>/<namespace>/<name>
 	parts := strings.Split(key, "/")
 	if len(parts) != 5 {
-		return nil, fmt.Errorf("invalid key (expecting three parts) " + key)
-	}
-	fmt.Println("key", key)
-
-	grn := &grn.GRN{
-		ResourceKind:       strings.TrimSuffix(gr.Resource, "s"), // dashboards to dashboard :shrug:
-		ResourceIdentifier: parts[4],
+		return nil, fmt.Errorf("invalid key (expecting 4 parts) " + key)
 	}
 
-	namespace := parts[3]
-	if namespace == "default" {
-		grn.TenantID = 1
-		return grn, nil
-	}
+	return &Key{
+		Group:     parts[1],
+		Kind:      parts[2],
+		Namespace: parts[3],
+		Name:      parts[4],
+	}, nil
+}
 
-	tid := strings.Split(namespace, "-")
+func (k *Key) String() string {
+	return fmt.Sprintf("/%s/%s/%s/%s", k.Group, k.Kind, k.Namespace, k.Name)
+}
+
+func (k *Key) IsEqual(other *Key) bool {
+	return k.Group == other.Group && k.Kind == other.Kind && k.Namespace == other.Namespace && k.Name == other.Name
+}
+
+func (k *Key) TenantID() (int64, error) {
+	if k.Namespace == "default" {
+		return 1, nil
+	}
+	tid := strings.Split(k.Namespace, "-")
 	if len(tid) != 2 || !(tid[0] == "org" || tid[0] == "tenant") {
-		return nil, fmt.Errorf("invalid namespace, expected org|tenant-${#}")
+		return 0, fmt.Errorf("invalid namespace, expected org|tenant-${#}")
 	}
-	intVar, err := strconv.ParseInt(tid[1], 0, 64)
+	intVar, err := strconv.ParseInt(tid[1], 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid namespace, expected number")
+		return 0, fmt.Errorf("invalid namespace, expected number")
 	}
-	grn.TenantID = intVar
-	return grn, nil
+	return intVar, nil
+}
+
+func (k *Key) ToGRN(kindName string) (*grn.GRN, error) {
+	tid, err := k.TenantID()
+	if err != nil {
+		return nil, err
+	}
+
+	return &grn.GRN{
+		ResourceKind:       kindName,
+		ResourceIdentifier: k.Name,
+		TenantID:           tid,
+	}, nil
+}
+
+// Convert an etcd key to GRN style
+func keyToGRN(key string, kindName string) (*grn.GRN, error) {
+	k, err := ParseKey(key)
+	if err != nil {
+		return nil, err
+	}
+	return k.ToGRN(kindName)
 }
 
 // this is terrible... but just making it work!!!!
-func enityToResource(rsp *entity.Entity) (kinds.GrafanaResource[map[string]interface{}, map[string]interface{}], error) {
+func entityToResource(rsp *entity.Entity, res runtime.Object) error {
 	var err error
-	rrr := kinds.GrafanaResource[map[string]interface{}, map[string]interface{}]{}
+	rrr, ok := res.(*unstructured.Unstructured)
+	if !ok {
+		return fmt.Errorf("invalid resource type")
+	}
+
+	if rrr.Object == nil {
+		rrr.Object = map[string]interface{}{}
+	}
+
+	if rsp.GRN == nil {
+		return fmt.Errorf("invalid entity, missing GRN")
+	}
+
 	if len(rsp.Meta) > 0 {
-		err = json.Unmarshal(rsp.Meta, &rrr.Metadata)
+		metadata := map[string]interface{}{}
+		err = json.Unmarshal(rsp.Meta, &metadata)
 		if err != nil {
-			return rrr, err
+			return err
 		}
+		rrr.Object["metadata"] = metadata
 	}
-	if rrr.Metadata.Annotations == nil {
-		rrr.Metadata.Annotations = make(map[string]string)
+
+	rrr.SetName(rsp.GRN.ResourceIdentifier)
+	if rsp.GRN.TenantID != 1 {
+		rrr.SetNamespace(fmt.Sprintf("tenant-%d", rsp.GRN.TenantID))
+	} else {
+		rrr.SetNamespace("default") // org 1
 	}
+	rrr.SetKind(rsp.GRN.ResourceKind)
+	rrr.SetUID(types.UID(rsp.Guid))
+	rrr.SetResourceVersion(rsp.Version)
+	rrr.SetCreationTimestamp(metav1.Unix(rsp.CreatedAt/1000, rsp.CreatedAt%1000*1000000))
+
+	annotations := rrr.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+
 	if rsp.Folder != "" {
-		rrr.Metadata.SetFolder(rsp.Folder)
+		annotations["grafana.com/folder"] = rsp.Folder
 	}
 	if rsp.CreatedBy != "" {
-		rrr.Metadata.SetCreatedBy(rsp.CreatedBy)
+		annotations["grafana.com/createdBy"] = rsp.CreatedBy
 	}
 	if rsp.UpdatedBy != "" {
-		rrr.Metadata.SetUpdatedBy(rsp.UpdatedBy)
+		annotations["grafana.com/updatedBy"] = rsp.UpdatedBy
+	}
+	if rsp.UpdatedAt != 0 {
+		updatedAt := time.UnixMilli(rsp.UpdatedAt).UTC()
+		annotations["grafana.com/updatedTimestamp"] = updatedAt.Format(time.RFC3339)
+	}
+	annotations["grafana.com/slug"] = rsp.Slug
+
+	if rsp.Origin != nil {
+		originTime := time.UnixMilli(rsp.Origin.Time).UTC()
+		annotations["grafana.com/originName"] = rsp.Origin.Source
+		annotations["grafana.com/originKey"] = rsp.Origin.Key
+		annotations["grafana.com/originTime"] = originTime.Format(time.RFC3339)
+		annotations["grafana.com/originPath"] = "" // rsp.Origin.Path
 	}
 
-	// Already saved in each payload
-	// rrr.Metadata.UID = types.UID(rsp.Guid)
+	rrr.SetAnnotations(annotations)
 
-	// if rrr.Metadata.Name == "" {
-	// 	rrr.Metadata.Name = rsp.GRN.UID
-	// }
-	// if rrr.Metadata.Namespace == "" {
-	// 	if rsp.GRN.TenantId > 1 {
-	// 		rrr.Metadata.Namespace = fmt.Sprintf("tenant-%d", rsp.GRN.TenantId)
-	// 	} else {
-	// 		rrr.Metadata.Namespace = "default" // org 1
-	// 	}
-	// }
+	if len(rsp.Labels) > 0 {
+		rrr.SetLabels(rsp.Labels)
+	}
 
 	if len(rsp.Body) > 0 {
 		var m map[string]interface{}
 		err = json.Unmarshal(rsp.Body, &m)
 		if err != nil {
-			return rrr, err
+			return err
 		}
-		rrr.Spec = &m
+		rrr.Object["spec"] = m
 	}
 	if len(rsp.Status) > 0 {
 		var m map[string]interface{}
 		err = json.Unmarshal(rsp.Status, &m)
 		if err != nil {
-			return rrr, err
+			return err
 		}
-		rrr.Status = &m
+		rrr.Object["status"] = m
 	}
-	return rrr, err
+
+	// fmt.Printf("ENTITY: %+v\n", rrr)
+
+	return nil
+}
+
+func resourceToEntity(key string, res runtime.Object) (*entity.Entity, error) {
+	rrr, ok := res.(*unstructured.Unstructured)
+	if !ok {
+		return nil, fmt.Errorf("invalid resource type")
+	}
+
+	fmt.Printf("RESOURCE: %+v\n", rrr)
+
+	g, err := keyToGRN(key, rrr.GetKind())
+	if err != nil {
+		return nil, err
+	}
+
+	rsp := &entity.Entity{
+		GRN:       g,
+		Name:      rrr.GetName(),
+		Guid:      string(rrr.GetUID()),
+		Version:   rrr.GetResourceVersion(),
+		Folder:    rrr.GetAnnotations()["grafana.com/folder"],
+		CreatedAt: rrr.GetCreationTimestamp().Time.UnixMilli(),
+		CreatedBy: rrr.GetAnnotations()["grafana.com/createdBy"],
+		UpdatedBy: rrr.GetAnnotations()["grafana.com/updatedBy"],
+		Slug:      rrr.GetAnnotations()["grafana.com/slug"],
+		Origin: &entity.EntityOriginInfo{
+			Source: rrr.GetAnnotations()["grafana.com/originName"],
+			Key:    rrr.GetAnnotations()["grafana.com/originKey"],
+			// Path: rrr.GetAnnotations()["grafana.com/originPath"],
+		},
+		Labels: rrr.GetLabels(),
+	}
+
+	if rrr.GetAnnotations()["grafana.com/updatedTimestamp"] != "" {
+		t, err := time.Parse(time.RFC3339, rrr.GetAnnotations()["grafana.com/updatedTimestamp"])
+		if err != nil {
+			return nil, err
+		}
+		rsp.UpdatedAt = t.UnixMilli()
+	}
+
+	if rrr.GetAnnotations()["grafana.com/originTime"] != "" {
+		t, err := time.Parse(time.RFC3339, rrr.GetAnnotations()["grafana.com/originTime"])
+		if err != nil {
+			return nil, err
+		}
+		rsp.Origin.Time = t.UnixMilli()
+	}
+
+	rsp.Meta, err = json.Marshal(rrr.Object["metadata"])
+	if err != nil {
+		return nil, err
+	}
+
+	rsp.Body, err = json.Marshal(rrr.Object["spec"])
+	if err != nil {
+		return nil, err
+	}
+
+	rsp.Status, err = json.Marshal(rrr.Object["status"])
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("ENTITY: %+v\n", rsp)
+	return rsp, nil
 }
 
 func contextWithFakeGrafanaUser(ctx context.Context) (context.Context, error) {
